@@ -1,0 +1,193 @@
+package com.sfdm.app.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import com.sfdm.app.data.AppSettings
+import com.sfdm.app.data.NetworkMode
+import kotlin.math.roundToInt
+
+@Composable
+fun NetworkModePicker(selected: NetworkMode, onSelect: (NetworkMode) -> Unit) {
+    Column {
+        NetworkMode.entries.forEach { m ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .selectable(selected = m == selected, onClick = { onSelect(m) })
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = m == selected, onClick = null)
+                Column(Modifier.padding(start = 8.dp)) {
+                    Text(Labels.mode(m), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        Labels.modeHint(m),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AddDownloadDialog(
+    initialUrl: String,
+    settings: AppSettings,
+    onAdd: (url: String, name: String?, connections: Int, mode: NetworkMode) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var url by remember { mutableStateOf(initialUrl) }
+    var name by remember { mutableStateOf("") }
+    var advanced by remember { mutableStateOf(false) }
+    var connections by remember { mutableFloatStateOf(settings.defaultConnections.toFloat()) }
+    var mode by remember { mutableStateOf(settings.defaultNetworkMode) }
+    val valid = url.trim().startsWith("http://", true) || url.trim().startsWith("https://", true)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("নতুন ডাউনলোড") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = url, onValueChange = { url = it },
+                    label = { Text("লিংক (URL)") },
+                    singleLine = false, maxLines = 4,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = url.isNotBlank() && !valid,
+                )
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it },
+                    label = { Text("ফাইলের নাম (ঐচ্ছিক)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { advanced = !advanced }
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Advanced", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text(Labels.mode(mode), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    Icon(if (advanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+                }
+                if (advanced) {
+                    Text("কানেকশন: ${connections.roundToInt()}", style = MaterialTheme.typography.bodyMedium)
+                    Slider(value = connections, onValueChange = { connections = it }, valueRange = 1f..32f, steps = 30)
+                    HorizontalDivider()
+                    Text("নেটওয়ার্ক", style = MaterialTheme.typography.bodyMedium)
+                    NetworkModePicker(mode) { mode = it }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = valid, onClick = {
+                onAdd(url.trim(), name.trim().ifBlank { null }, connections.roundToInt(), mode)
+            }) { Text("ডাউনলোড") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } },
+    )
+}
+
+@Composable
+fun SettingsDialog(settings: AppSettings, onSave: (AppSettings) -> Unit, onDismiss: () -> Unit) {
+    var mode by remember { mutableStateOf(settings.defaultNetworkMode) }
+    var connections by remember { mutableFloatStateOf(settings.defaultConnections.toFloat()) }
+    var parallel by remember { mutableFloatStateOf(settings.maxParallelDownloads.toFloat()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("সেটিংস") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("ডিফল্ট নেটওয়ার্ক", style = MaterialTheme.typography.titleSmall)
+                NetworkModePicker(mode) { mode = it }
+                HorizontalDivider()
+                Text("প্রতি ডাউনলোডে কানেকশন: ${connections.roundToInt()}")
+                Slider(value = connections, onValueChange = { connections = it }, valueRange = 1f..32f, steps = 30)
+                Text("একসাথে সর্বোচ্চ ডাউনলোড: ${parallel.roundToInt()}")
+                Slider(value = parallel, onValueChange = { parallel = it }, valueRange = 1f..10f, steps = 8)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onSave(
+                    AppSettings(
+                        defaultNetworkMode = mode,
+                        defaultConnections = connections.roundToInt(),
+                        maxParallelDownloads = parallel.roundToInt(),
+                    ),
+                )
+            }) { Text("সেভ") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } },
+    )
+}
+
+@Composable
+fun DeleteDialog(fileName: String, completed: Boolean, onConfirm: (deleteFile: Boolean) -> Unit, onDismiss: () -> Unit) {
+    var deleteFile by remember { mutableStateOf(!completed) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("ডিলিট করবেন?") },
+        text = {
+            Column {
+                Text(fileName)
+                if (completed) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = deleteFile, onCheckedChange = { deleteFile = it })
+                        Text("ফোন থেকে ফাইলটিও মুছে ফেলুন")
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(deleteFile) }) { Text("ডিলিট") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } },
+    )
+}
+
+@Composable
+fun ChangeNetworkDialog(current: NetworkMode, onSelect: (NetworkMode) -> Unit, onDismiss: () -> Unit) {
+    var mode by remember { mutableStateOf(current) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("এই ডাউনলোডের নেটওয়ার্ক") },
+        text = { NetworkModePicker(mode) { mode = it } },
+        confirmButton = { TextButton(onClick = { onSelect(mode) }) { Text("ঠিক আছে") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } },
+    )
+}

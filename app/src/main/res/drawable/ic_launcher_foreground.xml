@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original SFDM mark: a downward arrow landing in a tray, with speed lines -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M50,28h8v28l10,-10l5.7,5.7L54,71.4L34.3,51.7L40,46l10,10z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,74h44v6H32z" />
+    <path
+        android:fillColor="#7FFFFFFF"
+        android:pathData="M30,34h12v4H30zM26,42h14v4H26z" />
+</vector>
