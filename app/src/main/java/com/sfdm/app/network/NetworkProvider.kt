@@ -138,9 +138,13 @@ class NetworkProvider(context: Context) {
                 held1
             }.also { it.refs++ }
         }
-        val net = withTimeoutOrNull(timeoutMs) {
-            while (h.network == null) delay(200)
-            h.network
+        val net: Network? = withTimeoutOrNull(timeoutMs) {
+            var found: Network? = h.network
+            while (found == null) {
+                delay(200)
+                found = h.network
+            }
+            found
         }
         if (net == null) release(transport)
         return net

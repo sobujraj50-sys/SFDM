@@ -45,7 +45,7 @@ sealed class EngineResult {
 /** The network a worker was using disappeared; another lane may take over its work. */
 private class LaneDeadException : IOException("network lost")
 
-/** A byte range [start..end] (inclusive). [end] can shrink when the range is split (dynamic segmentation). */
+/** A byte range from start to end (inclusive). The end can shrink when the range is split (dynamic segmentation). */
 private class Seg(val start: Long, end: Long, downloaded: Long) {
     val end = AtomicLong(end)
     val downloaded = AtomicLong(downloaded)
