@@ -24,13 +24,13 @@ data class ProbeResult(
 object Probe {
 
     /** Asks the server for the file's size, name and whether it can send pieces (resume/multi-connection). */
-    fun run(client: OkHttpClient, url: String): ProbeResult {
-        val req = Request.Builder()
+    fun run(client: OkHttpClient, url: String, useRange: Boolean = true): ProbeResult {
+        val rb = Request.Builder()
             .url(url)
             .header("User-Agent", USER_AGENT)
             .header("Accept-Encoding", "identity")
-            .header("Range", "bytes=0-")
-            .build()
+        if (useRange) rb.header("Range", "bytes=0-")
+        val req = rb.build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw httpError(resp.code)
             val contentRange = resp.header("Content-Range")

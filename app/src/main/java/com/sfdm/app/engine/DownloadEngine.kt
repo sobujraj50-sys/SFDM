@@ -81,6 +81,9 @@ class DownloadEngine(
     }
 
     private var d = initial
+    /** The URL actually fetched: the direct file behind a page link (refreshed on every start). */
+    private var fetchUrl = initial.url
+    private var suggestedName: String? = null
     private val segLock = Any()
     private val segs = mutableListOf<Seg>()
     private var splittable = false
@@ -97,7 +100,12 @@ class DownloadEngine(
             autoTransport = net.defaultTransport()
 
             val probe = try {
+                val resolved = LinkResolver.resolve((lanes.firstOrNull { net.isAlive(it) } ?: lanes[0]).client, d.url)
+                fetchUrl = resolved.url
+                suggestedName = resolved.suggestedName
                 probeWithRetry(lanes)
+            } catch (e: ExtractionException) {
+                return@withContext EngineResult.Failed(e.message ?: "ভিডিও পাওয়া যায়নি")
             } catch (e: FatalHttpException) {
                 return@withContext EngineResult.Failed(e.message ?: "সার্ভার ত্রুটি")
             } catch (e: IOException) {
@@ -108,6 +116,12 @@ class DownloadEngine(
                 }
             }
 
+            if (probe.mimeType?.startsWith("text/html") == true) {
+                return@withContext EngineResult.Failed(
+                    "এটা একটা ওয়েবপেজের লিংক, সরাসরি ফাইলের লিংক না। " +
+                        "ওয়েবপেজ থেকে ভিডিও নামানোর সুবিধা বিল্ট-ইন ব্রাউজারে আসছে।",
+                )
+            }
             prepareTarget(probe)
             prepareSegments()
             dao.setStatus(d.id, DownloadStatus.RUNNING)
@@ -157,8 +171,10 @@ class DownloadEngine(
         while (true) {
             val lane = lanes.firstOrNull { net.isAlive(it) } ?: throw IOException("network lost")
             try {
-                return Probe.run(lane.client, d.url)
+                return Probe.run(lane.client, fetchUrl)
             } catch (e: FatalHttpException) {
+                // Some servers reject Range requests outright; ask again without it.
+                if (e.code == 400 || e.code == 416) return Probe.run(lane.client, fetchUrl, useRange = false)
                 if (Probe.isFatal(e.code) || ++attempt >= 3) throw e
             } catch (e: IOException) {
                 if (++attempt >= 3) throw e
@@ -174,7 +190,7 @@ class DownloadEngine(
     private suspend fun prepareTarget(p: ProbeResult) {
         val existing = d.target?.takeIf { storage.exists(it) }
         if (existing == null) {
-            val name = Storage.sanitize(d.fileName.ifBlank { p.fileName ?: "download" })
+            val name = Storage.sanitize(d.fileName.ifBlank { suggestedName ?: p.fileName ?: "download" })
             val target = storage.create(name, p.mimeType)
             d = d.copy(
                 fileName = name,
@@ -362,7 +378,7 @@ class DownloadEngine(
             currentCoroutineContext().ensureActive()
             val from = seg.pos()
             val rb = Request.Builder()
-                .url(d.url)
+                .url(fetchUrl)
                 .header("User-Agent", USER_AGENT)
                 .header("Accept-Encoding", "identity")
             if (splittable) {
