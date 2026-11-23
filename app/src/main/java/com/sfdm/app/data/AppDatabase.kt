@@ -62,7 +62,7 @@ interface DownloadDao {
     }
 }
 
-@Database(entities = [DownloadEntity::class, SegmentEntity::class], version = 1, exportSchema = true)
+@Database(entities = [DownloadEntity::class, SegmentEntity::class], version = 1, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun downloads(): DownloadDao
