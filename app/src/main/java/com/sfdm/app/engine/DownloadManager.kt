@@ -106,6 +106,20 @@ class DownloadManager(
         _live.value = emptyMap()
     }
 
+    fun resumeAll() = scope.launch {
+        dao.getStopped().forEach { dao.setStatus(it.id, DownloadStatus.QUEUED) }
+        DownloadService.start(context)
+        schedule(includeWaiting = true)
+    }
+
+    /** Puts a waiting download first in the queue. */
+    fun moveToTop(id: Long) = scope.launch {
+        dao.setQueueOrder(id, (dao.minQueueOrder() ?: 0L) - 1)
+        schedule(includeWaiting = false)
+    }
+
+    fun clearHistory() = scope.launch { dao.clearCompleted() }
+
     fun setNetworkMode(id: Long, mode: NetworkMode) = scope.launch {
         val wasRunning = jobs.containsKey(id)
         jobs.remove(id)?.cancelAndJoin()

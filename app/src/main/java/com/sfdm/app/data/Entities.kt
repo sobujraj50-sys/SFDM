@@ -39,6 +39,10 @@ data class DownloadEntity(
     val networkMode: NetworkMode = NetworkMode.AUTO,
     /** Chosen video quality ("HD"/"SD") for page links; null = best available. */
     val quality: String? = null,
+    /** [Category] name; decides the folder under Download/SFDM. */
+    val category: String? = null,
+    /** Lower = earlier in the queue. */
+    val queueOrder: Long = System.currentTimeMillis(),
     val supportsRange: Boolean = false,
     val etag: String? = null,
     val lastModified: String? = null,

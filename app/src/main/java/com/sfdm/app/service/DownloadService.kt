@@ -17,13 +17,17 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.sfdm.app.R
 import com.sfdm.app.SfdmApp
+import com.sfdm.app.data.DownloadEntity
 import com.sfdm.app.data.DownloadStatus
+import com.sfdm.app.engine.LiveStats
 import com.sfdm.app.util.Format
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
- * Keeps downloads alive while the app is in the background and shows one summary notification.
+ * Keeps downloads alive in the background.
+ * Shows one summary notification (required for the foreground service) plus
+ * one notification per running download with Pause / Cancel buttons.
  * Stops itself when nothing is downloading or waiting.
  */
 class DownloadService : LifecycleService() {
@@ -31,15 +35,17 @@ class DownloadService : LifecycleService() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var started = false
+    private val shown = HashSet<Long>()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        if (intent?.action == ACTION_PAUSE_ALL) {
-            SfdmApp.get(this).manager.pauseAll()
+        val manager = SfdmApp.get(this).manager
+        when (intent?.action) {
+            ACTION_PAUSE_ALL -> manager.pauseAll()
         }
         if (!started) {
             started = true
-            goForeground(build("SFDM", "ডাউনলোড প্রস্তুত হচ্ছে…", 0, 0, true))
+            goForeground(summary("SFDM", "ডাউনলোড প্রস্তুত হচ্ছে…", 0, 0, true))
             acquireLocks()
             observe()
         }
@@ -55,41 +61,79 @@ class DownloadService : LifecycleService() {
 
     private fun observe() {
         val manager = SfdmApp.get(this).manager
+        val nm = getSystemService(NotificationManager::class.java)
         lifecycleScope.launch {
             combine(manager.downloads, manager.live) { list, live -> list to live }.collect { (list, live) ->
                 val active = list.filter { it.status.isActive }
+                val running = active.filter { live.containsKey(it.id) }
+
+                // Per-download notifications: post for running ones, remove the rest.
+                val runningIds = running.map { it.id }.toSet()
+                (shown - runningIds).forEach { nm.cancel(Notifications.progressId(it)) }
+                shown.retainAll(runningIds)
+                running.forEach { d ->
+                    nm.notify(Notifications.progressId(d.id), item(d, live[d.id]))
+                    shown += d.id
+                }
+
                 if (active.isEmpty()) {
                     ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                     stopSelf()
                     return@collect
                 }
-                val running = active.filter { live.containsKey(it.id) }
+
                 val waiting = active.count { it.status == DownloadStatus.WAITING_NETWORK }
+                val queued = active.count { it.status == DownloadStatus.QUEUED }
                 val speed = running.sumOf { live[it.id]?.speedBps ?: 0L }
                 val done = active.sumOf { live[it.id]?.downloaded ?: it.downloadedBytes }
                 val total = active.sumOf { if (it.totalBytes > 0) it.totalBytes else 0L }
                 val title = when {
-                    running.size == 1 -> running[0].fileName.ifBlank { "ডাউনলোড চলছে" }
-                    running.isNotEmpty() -> "${running.size}টি ডাউনলোড চলছে"
+                    running.isNotEmpty() -> "${running.size}টি ডাউনলোড চলছে • ${Format.speed(speed)}"
                     waiting > 0 -> "নেটওয়ার্কের অপেক্ষায়"
                     else -> "সারিতে অপেক্ষমাণ"
                 }
                 val text = buildString {
-                    if (running.isNotEmpty()) append(Format.speed(speed))
-                    if (total > 0) {
-                        if (isNotEmpty()) append(" • ")
-                        append("${Format.bytes(done)} / ${Format.bytes(total)}")
-                    }
-                    if (waiting > 0 && running.isNotEmpty()) append(" • ${waiting}টি অপেক্ষায়")
+                    if (total > 0) append("${Format.bytes(done)} / ${Format.bytes(total)}")
+                    if (queued > 0) { if (isNotEmpty()) append(" • "); append("${queued}টি সারিতে") }
+                    if (waiting > 0) { if (isNotEmpty()) append(" • "); append("${waiting}টি নেটের অপেক্ষায়") }
                 }
                 val percent = if (total > 0) ((done * 100) / total).toInt() else 0
-                val n = build(title, text, percent, 100, total <= 0 && running.isNotEmpty())
-                getSystemService(NotificationManager::class.java).notify(Notifications.FOREGROUND_ID, n)
+                nm.notify(Notifications.FOREGROUND_ID, summary(title, text, percent, 100, total <= 0 && running.isNotEmpty()))
             }
         }
     }
 
-    private fun build(title: String, text: String, progress: Int, max: Int, indeterminate: Boolean): Notification {
+    private fun item(d: DownloadEntity, s: LiveStats?): Notification {
+        val done = s?.downloaded ?: d.downloadedBytes
+        val total = if (d.totalBytes > 0) d.totalBytes else s?.total ?: -1
+        val speed = s?.speedBps ?: 0
+        val text = buildString {
+            append(Format.speed(speed))
+            if (total > 0) {
+                append(" • ${Format.bytes(done)} / ${Format.bytes(total)}")
+                Format.eta(total - done, speed).takeIf { it.isNotEmpty() }?.let { append(" • $it") }
+            } else {
+                append(" • ${Format.bytes(done)}")
+            }
+        }
+        val percent = if (total > 0) ((done * 100) / total).toInt() else 0
+        return NotificationCompat.Builder(this, Notifications.CHANNEL_PROGRESS)
+            .setSmallIcon(R.drawable.ic_stat_download)
+            .setContentTitle(d.fileName.ifBlank { d.url })
+            .setContentText(text)
+            .setSubText(if (total > 0) "$percent%" else null)
+            .setProgress(100, percent, total <= 0)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setSilent(true)
+            .setGroup(Notifications.GROUP)
+            .setContentIntent(Notifications.openAppIntent(this))
+            .addAction(0, "থামান", NotificationActionReceiver.intent(this, NotificationActionReceiver.ACTION_PAUSE, d.id))
+            .addAction(0, "বাতিল", NotificationActionReceiver.intent(this, NotificationActionReceiver.ACTION_CANCEL, d.id))
+            .build()
+    }
+
+    private fun summary(title: String, text: String, progress: Int, max: Int, indeterminate: Boolean): Notification {
         val pauseIntent = PendingIntent.getService(
             this, 1,
             Intent(this, DownloadService::class.java).setAction(ACTION_PAUSE_ALL),
@@ -103,6 +147,8 @@ class DownloadService : LifecycleService() {
             .setOngoing(true)
             .setSilent(true)
             .setProgress(max, progress, indeterminate)
+            .setGroup(Notifications.GROUP)
+            .setGroupSummary(true)
             .setContentIntent(Notifications.openAppIntent(this))
             .addAction(0, "সব থামান", pauseIntent)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -123,6 +169,8 @@ class DownloadService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        val nm = getSystemService(NotificationManager::class.java)
+        shown.forEach { nm.cancel(Notifications.progressId(it)) }
         runCatching { wakeLock?.release() }
         runCatching { wifiLock?.release() }
         super.onDestroy()

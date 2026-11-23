@@ -13,8 +13,24 @@ android {
         applicationId = "com.sfdm.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+    }
+
+    // Stable signing key from CI secrets (SFDM_KEYSTORE_PATH / SFDM_KEYSTORE_PASSWORD).
+    // Without it, builds fall back to the per-machine debug key.
+    val keystorePath = System.getenv("SFDM_KEYSTORE_PATH")
+    val keystorePassword = System.getenv("SFDM_KEYSTORE_PASSWORD")
+    val hasStableKey = !keystorePath.isNullOrBlank() && !keystorePassword.isNullOrBlank() && file(keystorePath).exists()
+    signingConfigs {
+        if (hasStableKey) {
+            create("sfdm") {
+                storeFile = file(keystorePath!!)
+                storePassword = keystorePassword
+                keyAlias = "sfdm"
+                keyPassword = keystorePassword
+            }
+        }
     }
 
     // Two editions: "full" is distributed as an APK by the developer,
@@ -34,12 +50,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (hasStableKey) signingConfig = signingConfigs.getByName("sfdm")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key until a release keystore is added.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (hasStableKey) "sfdm" else "debug")
         }
     }
 

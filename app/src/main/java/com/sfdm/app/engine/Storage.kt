@@ -12,6 +12,7 @@ import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.sfdm.app.data.Category
 import java.io.Closeable
 import java.io.File
 import java.io.RandomAccessFile
@@ -33,20 +34,20 @@ class OpenTarget(val channel: FileChannel, private val extra: Closeable?) : Clos
  */
 class Storage(private val context: Context) {
 
-    fun create(fileName: String, mimeType: String?): String {
+    fun create(fileName: String, mimeType: String?, category: Category): String {
         val safe = sanitize(fileName)
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, safe)
                 if (mimeType != null) put(MediaStore.Downloads.MIME_TYPE, mimeType)
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/SFDM")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/SFDM/" + category.folder)
                 put(MediaStore.Downloads.IS_PENDING, 1)
             }
             val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: throw IllegalStateException("ফাইল তৈরি করা যায়নি")
             uri.toString()
         } else {
-            val dir = legacyDir().apply { mkdirs() }
+            val dir = File(legacyDir(), category.folder).apply { mkdirs() }
             uniqueFile(dir, safe).also { it.createNewFile() }.absolutePath
         }
     }

@@ -19,7 +19,21 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Decode signing key
+        env:
+          KS_B64: ${{ secrets.SFDM_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/sfdm.jks"
+            echo "SFDM_KEYSTORE_PATH=$RUNNER_TEMP/sfdm.jks" >> "$GITHUB_ENV"
+            echo "Stable signing key found"
+          else
+            echo "::warning::No SFDM_KEYSTORE_BASE64 secret - APKs use a temporary debug key"
+          fi
+
       - name: Build APKs (full + play)
+        env:
+          SFDM_KEYSTORE_PASSWORD: ${{ secrets.SFDM_KEYSTORE_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleFullDebug assemblePlayDebug assembleFullRelease

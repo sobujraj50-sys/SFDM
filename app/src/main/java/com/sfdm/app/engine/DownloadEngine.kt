@@ -1,5 +1,6 @@
 package com.sfdm.app.engine
 
+import com.sfdm.app.data.Category
 import com.sfdm.app.data.DownloadDao
 import com.sfdm.app.data.DownloadEntity
 import com.sfdm.app.data.DownloadStatus
@@ -191,9 +192,11 @@ class DownloadEngine(
         val existing = d.target?.takeIf { storage.exists(it) }
         if (existing == null) {
             val name = Storage.sanitize(d.fileName.ifBlank { suggestedName ?: p.fileName ?: "download" })
-            val target = storage.create(name, p.mimeType)
+            val category = Category.detect(name, p.mimeType)
+            val target = storage.create(name, p.mimeType, category)
             d = d.copy(
                 fileName = name,
+                category = category.name,
                 target = target,
                 mimeType = p.mimeType,
                 totalBytes = p.totalBytes,

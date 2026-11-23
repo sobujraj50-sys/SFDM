@@ -20,6 +20,9 @@ object Notifications {
     const val CHANNEL_PROGRESS = "progress"
     const val CHANNEL_DONE = "done"
     const val FOREGROUND_ID = 1
+    const val GROUP = "sfdm_downloads"
+
+    fun progressId(downloadId: Long) = (2000 + downloadId).toInt()
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -71,6 +74,10 @@ object Notifications {
                 .setContentTitle("ডাউনলোড ব্যর্থ: ${d.fileName.ifBlank { d.url }}")
                 .setContentText(d.error ?: "")
                 .setContentIntent(openAppIntent(context))
+                .addAction(
+                    0, "আবার চেষ্টা",
+                    NotificationActionReceiver.intent(context, NotificationActionReceiver.ACTION_RESUME, d.id),
+                )
                 .setAutoCancel(true)
                 .build(),
         )
