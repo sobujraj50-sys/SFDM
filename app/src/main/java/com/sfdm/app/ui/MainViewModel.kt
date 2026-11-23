@@ -43,9 +43,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val settings: StateFlow<AppSettings> = sfdm.settings.state
 
-    fun add(url: String, name: String?, connections: Int, mode: NetworkMode) {
-        viewModelScope.launch { manager.add(url, name, connections, mode) }
+    fun add(url: String, name: String?, connections: Int, mode: NetworkMode, quality: String?) {
+        viewModelScope.launch { manager.add(url, name, connections, mode, quality) }
     }
+
+    suspend fun inspect(url: String) = manager.inspect(url)
 
     fun pause(id: Long) { manager.pause(id) }
     fun resume(id: Long) { manager.resume(id) }

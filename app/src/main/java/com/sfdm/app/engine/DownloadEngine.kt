@@ -100,7 +100,7 @@ class DownloadEngine(
             autoTransport = net.defaultTransport()
 
             val probe = try {
-                val resolved = LinkResolver.resolve((lanes.firstOrNull { net.isAlive(it) } ?: lanes[0]).client, d.url)
+                val resolved = LinkResolver.resolve((lanes.firstOrNull { net.isAlive(it) } ?: lanes[0]).client, d.url, d.quality)
                 fetchUrl = resolved.url
                 suggestedName = resolved.suggestedName
                 probeWithRetry(lanes)

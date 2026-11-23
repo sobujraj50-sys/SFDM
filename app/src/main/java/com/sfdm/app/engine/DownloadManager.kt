@@ -69,7 +69,7 @@ class DownloadManager(
         }
     }
 
-    suspend fun add(url: String, fileName: String?, connections: Int?, mode: NetworkMode?): Long {
+    suspend fun add(url: String, fileName: String?, connections: Int?, mode: NetworkMode?, quality: String? = null): Long {
         val s = settings.state.value
         val id = dao.insert(
             DownloadEntity(
@@ -77,6 +77,7 @@ class DownloadManager(
                 fileName = fileName?.trim().orEmpty(),
                 connections = (connections ?: s.defaultConnections).coerceIn(1, 32),
                 networkMode = mode ?: s.defaultNetworkMode,
+                quality = quality?.ifBlank { null },
             ),
         )
         DownloadService.start(context)
@@ -123,6 +124,8 @@ class DownloadManager(
         _live.update { it - id }
         schedule(includeWaiting = false)
     }
+
+    suspend fun inspect(url: String) = com.sfdm.app.engine.Inspector.inspect(net.baseClient, url.trim())
 
     suspend fun hasActive(): Boolean = dao.getActive().isNotEmpty()
 

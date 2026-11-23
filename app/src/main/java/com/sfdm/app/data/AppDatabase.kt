@@ -11,6 +11,8 @@ import androidx.room.Transaction
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 class Converters {
@@ -62,7 +64,7 @@ interface DownloadDao {
     }
 }
 
-@Database(entities = [DownloadEntity::class, SegmentEntity::class], version = 1, exportSchema = false)
+@Database(entities = [DownloadEntity::class, SegmentEntity::class], version = 2, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun downloads(): DownloadDao
@@ -70,8 +72,15 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile private var instance: AppDatabase? = null
 
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE downloads ADD COLUMN quality TEXT")
+            }
+        }
+
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "sfdm.db")
+                .addMigrations(MIGRATION_1_2)
                 .build().also { instance = it }
         }
     }

@@ -35,6 +35,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.sfdm.app.data.AppSettings
 import com.sfdm.app.data.NetworkMode
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.LaunchedEffect
+import com.sfdm.app.engine.LinkInfo
+import com.sfdm.app.engine.LinkResolver
+import com.sfdm.app.util.Format
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 @Composable
@@ -66,15 +74,42 @@ fun NetworkModePicker(selected: NetworkMode, onSelect: (NetworkMode) -> Unit) {
 fun AddDownloadDialog(
     initialUrl: String,
     settings: AppSettings,
-    onAdd: (url: String, name: String?, connections: Int, mode: NetworkMode) -> Unit,
+    inspect: suspend (String) -> LinkInfo,
+    onAdd: (url: String, name: String?, connections: Int, mode: NetworkMode, quality: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var url by remember { mutableStateOf(initialUrl) }
     var name by remember { mutableStateOf("") }
+    var nameEdited by remember { mutableStateOf(false) }
     var advanced by remember { mutableStateOf(false) }
     var connections by remember { mutableFloatStateOf(settings.defaultConnections.toFloat()) }
     var mode by remember { mutableStateOf(settings.defaultNetworkMode) }
-    val valid = url.trim().startsWith("http://", true) || url.trim().startsWith("https://", true)
+    var info by remember { mutableStateOf<LinkInfo?>(null) }
+    var infoError by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var quality by remember { mutableStateOf<String?>(null) }
+    val trimmed = url.trim()
+    val valid = trimmed.startsWith("http://", true) || trimmed.startsWith("https://", true)
+
+    // Look up name, size and qualities shortly after the link stops changing.
+    LaunchedEffect(trimmed) {
+        info = null; infoError = null; quality = null
+        if (!valid) return@LaunchedEffect
+        delay(600)
+        loading = true
+        try {
+            val i = inspect(trimmed)
+            info = i
+            quality = i.variants.firstOrNull()?.quality?.ifBlank { null }
+            if (!nameEdited) name = i.fileName.orEmpty()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            infoError = e.message
+        } finally {
+            loading = false
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -90,11 +125,25 @@ fun AddDownloadDialog(
                     isError = url.isNotBlank() && !valid,
                 )
                 OutlinedTextField(
-                    value = name, onValueChange = { name = it },
-                    label = { Text("ফাইলের নাম (ঐচ্ছিক)") },
+                    value = name, onValueChange = { name = it; nameEdited = true },
+                    label = { Text("ফাইলের নাম") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+
+                when {
+                    loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text("  লিংকের তথ্য আনা হচ্ছে…", style = MaterialTheme.typography.bodySmall)
+                    }
+                    infoError != null -> Text(
+                        infoError ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    info != null -> LinkInfoView(info!!, quality) { quality = it }
+                }
+
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -117,11 +166,52 @@ fun AddDownloadDialog(
         },
         confirmButton = {
             TextButton(enabled = valid, onClick = {
-                onAdd(url.trim(), name.trim().ifBlank { null }, connections.roundToInt(), mode)
+                onAdd(trimmed, name.trim().ifBlank { null }, connections.roundToInt(), mode, quality)
             }) { Text("ডাউনলোড") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("বাতিল") } },
     )
+}
+
+@Composable
+private fun LinkInfoView(info: LinkInfo, selected: String?, onSelect: (String) -> Unit) {
+    val single = info.variants.singleOrNull()
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (single != null && single.quality.isBlank()) {
+            val size = if (single.sizeBytes > 0) Format.bytes(single.sizeBytes) else "সাইজ অজানা"
+            val resume = if (single.resumable) "রিজিউম করা যাবে" else "রিজিউম সাপোর্ট নেই"
+            Text("$size • $resume", style = MaterialTheme.typography.bodySmall)
+        } else {
+            Text("ভিডিও কোয়ালিটি", style = MaterialTheme.typography.titleSmall)
+            info.variants.forEach { v ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .selectable(selected = v.quality == selected, onClick = { onSelect(v.quality) })
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = v.quality == selected, onClick = null)
+                    Text(
+                        "  ${qualityLabel(v.quality)}",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        if (v.sizeBytes > 0) Format.bytes(v.sizeBytes) else "?",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun qualityLabel(q: String) = when (q) {
+    LinkResolver.HD -> "HD (উচ্চ মান)"
+    LinkResolver.SD -> "SD (কম ডেটা)"
+    else -> q
 }
 
 @Composable

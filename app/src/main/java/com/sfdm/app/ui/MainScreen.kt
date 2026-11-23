@@ -117,8 +117,9 @@ fun MainScreen(vm: MainViewModel, incomingUrl: String?, onIncomingConsumed: () -
         AddDownloadDialog(
             initialUrl = initial,
             settings = settings,
-            onAdd = { url, name, conns, mode ->
-                vm.add(url, name, conns, mode)
+            inspect = { vm.inspect(it) },
+            onAdd = { url, name, conns, mode, quality ->
+                vm.add(url, name, conns, mode, quality)
                 addUrl = null
             },
             onDismiss = { addUrl = null },
@@ -204,6 +205,7 @@ private fun DownloadCard(item: DownloadItem, vm: MainViewModel) {
                             if (item.total > 0) Format.eta(item.total - item.downloaded, item.speed).takeIf { it.isNotEmpty() }?.let { add(it) }
                             if (item.connections > 0) add("${item.connections} কানেকশন")
                         }
+                        d.quality?.let { add(it) }
                         if (d.networkMode != NetworkMode.AUTO) add(Labels.mode(d.networkMode))
                     }.joinToString(" • ")
                     Text(info, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))

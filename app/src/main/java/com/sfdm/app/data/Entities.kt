@@ -37,6 +37,8 @@ data class DownloadEntity(
     val status: DownloadStatus = DownloadStatus.QUEUED,
     val connections: Int = 8,
     val networkMode: NetworkMode = NetworkMode.AUTO,
+    /** Chosen video quality ("HD"/"SD") for page links; null = best available. */
+    val quality: String? = null,
     val supportsRange: Boolean = false,
     val etag: String? = null,
     val lastModified: String? = null,
